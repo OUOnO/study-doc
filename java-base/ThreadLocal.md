@@ -1,10 +1,14 @@
+# 【面向知识点学习】ThreadLocal
+
 ### 知识点1：ThreadLocal是什么？
+
 1. 需要理解线程安全，简单来说造成线程不安全的原因有两个。
    + `不想共享的变量被共享了`
    + `想共享的没及时共享`
-     ThreadLocal解决的是第一个问题。
 
-2. 权威解释
+ThreadLocal解决的是第一个问题。
+
+1. 权威解释
 ```
 // 第一段
  * This class provides thread-local variables.  These variables differ from
@@ -368,12 +372,12 @@ public class Test5 extends Thread{
 
 
 ```
-// 不仅是可以继承的，而且可以被孙子继承，传家宝。
+// 不仅是可以继承的，而且可以被孙子继承，可以一直传下去，传家宝。
 id in main thread
 id in main thread
 ```
 
-实现是耦合在Thread类中，当子线程初始化的时候，将父线程的inheritableThreadLocals设置到子线程中。比较简单，就不展开了。
+实现是耦合在Thread类中的，当子线程初始化的时候，将父线程的inheritableThreadLocals设置到子线程中。比较简单，就不展开了。
 
 ```
 // java.lang.Thread
@@ -423,3 +427,24 @@ InheritableThreadLocal并没有重写withInitial方法，这样创建的ThreadLo
     }
 ```
 
+
+
+在Spring中，大部分应用到ThreadLocal的地方都提供了InheritableThreadLocal的实现，可以通过配置启用。但是在我看来应用场景真的不多。无非就是下面的例子：
+
+```
+        new Thread(()->{
+            HttpServletRequest req = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+        }).start();
+```
+
+但是真正使用的时候我们会这样手动创建一个线程吗？一般都用线程池吧。如下：
+
+```
+        pool.execute(()->{
+            HttpServletRequest req = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+        });
+```
+
+线程池中的线程和当前线程非亲非故，怎么继承你的InheritableThreadLocal啊。。。
+
+当项目中用到自定义线程池的时候，需要**非常注意**这些ThreadLocal对象的使用。因为在线程池中你是得不到ThreadLocal的值的。一个典型的例子是Hystrix的线程隔离，你必须清楚的知道，在Hystrix的线程池中是获取不到request线程的ThreadLocal的，否则坑就这么悄然而至。
