@@ -2,35 +2,37 @@
 
 ### 知识点1：ThreadLocal是什么？
 
-1. 需要理解线程安全，简单来说造成线程不安全的原因有两个。
-   + `不想共享的变量被共享了`
-   + `想共享的没及时共享`
+需要理解线程安全，简单来说造成线程不安全的原因有两个。
 
-ThreadLocal解决的是第一个问题。
++ `不想共享的变量被共享了`
++ `想共享的没及时共享`
 
-1. 权威解释
+ThreadLocal解决的是第一个问题，很多情况下我们不希望不同线程之间能互相访问操作对方的变量。例如一个web服务器，多个用户并发访问，用户A有用户A的userId，用户B有用户B的userId。这时候可以使用ThreadLocal保存每个访问线程对应的userId，各读各的，互不干扰。
+
++ 权威解释
+
 ```
-// 第一段
+
  * This class provides thread-local variables.  These variables differ from
  * their normal counterparts in that each thread that accesses one (via its
  * {@code get} or {@code set} method) has its own, independently initialized
  * copy of the variable.  {@code ThreadLocal} instances are typically private
  * static fields in classes that wish to associate state with a thread (e.g.,
  * a user ID or Transaction ID).
-// 第二段
+
  * <p>Each thread holds an implicit reference to its copy of a thread-local
  * variable as long as the thread is alive and the {@code ThreadLocal}
  * instance is accessible; after a thread goes away, all of its copies of
  * thread-local instances are subject to garbage collection (unless other
  * references to these copies exist).
 ```
-不翻译了，记几点需要注意的
+不翻译了，记几点解释说明如下：
 
 + ThreadLocal对象通常是private static fields
 + 线程运行结束后可以对该线程的变量副本进行回收，除非该副本有别的引用
-+ 一些关键字：副本，线程独享
++ 关键字：副本，线程独享
 
-一个例子，运行两个线程分别设置userId的值，可以看到互不干扰。
+一个例子，运行两个线程分别设置userId的值，可以看到不同线程互不干扰。
 
 ```
 public class Test {
@@ -40,6 +42,7 @@ public class Test {
     public static void main(String[] args) throws InterruptedException {
         Thread thread1 = new Thread(() -> {
             try {
+            // 线程1两秒之后获得userid，并且设置userid为id1
                 TimeUnit.SECONDS.sleep(2);
                 System.out.println("initial userId in thread1:" + userId.get());
                 userId.set("id1");
@@ -51,6 +54,7 @@ public class Test {
 
         Thread thread2 = new Thread(() -> {
             try {
+            	// 线程二获取初始的userId，然后一秒之后设置为id2，再过两秒之后再次读取userid
                 System.out.println("initial userId in thread2:" + userId.get());
                 TimeUnit.SECONDS.sleep(1);
                 userId.set("id2");
@@ -65,7 +69,8 @@ public class Test {
 
         thread1.start();
         thread2.start();
-
+        
+		// 在main线程等待两个线程执行结束
         thread1.join();
         thread2.join();
 
@@ -82,7 +87,7 @@ now userId in thread2:id2
 ```
 ### 知识点二：ThreadLocal实现原理
 
-最关键代码如下，在任何代码中执行Thread.currentThread()，都可以获取到当前执行这段代码的Thread对象。既然获得了当前的Thread对象了，如果让我们自己实现线程独享变量怎么实现呢？自然是在当前Thread对象中使用一个集合来存储这些变量，这样每个线程都持有一个本地变量集合互相不干扰。
+最关键代码如下，在任何代码中执行Thread.currentThread()，都可以获取到当前执行这段代码的Thread对象。既然获得了当前的Thread对象了，如果让我们自己实现线程独享变量怎么实现呢？自然而然就会想到在先获取当前Thread对象，然后在当前Thread对象中使用一个容器来存储这些变量，这样每个线程都持有一个本地变量容器，从而做到互相不干扰。
 
 ```java
 public static native Thread currentThread();
@@ -90,7 +95,7 @@ public static native Thread currentThread();
 
 
 
-打开Thread类一看，确实有一个集合ThreadLocalMap。ThreadLocalMap是一个类似HashMap的存储结构，那么它的key和value分别是什么呢？
+而jdk确实是这么实现的，Thread类中有一个ThreadLocalMap threadLocals。ThreadLocalMap是一个类似HashMap的存储结构，那么它的key和value分别是什么呢？
 
 ```
 public
@@ -120,7 +125,13 @@ class Thread implements Runnable {
 
 
 
-至此，一切都明了了。调用链如下：
+至此，一切都明了了。
+
+1. ThreadLocal对象通过Thread.currentThread()获取当前Thread对象
+2. 当前Thread获取对象内部持有的ThreadLocalMap容器
+3. 从ThreadLocalMap容器中用ThreadLocal对象作为key，操作当前Thread中的变量副本。
+
+调用链如下：
 
 ![thread-local-chain](images/thread_local_chain.png)
 
@@ -128,7 +139,7 @@ class Thread implements Runnable {
 
 ![thread-local-chain](images/thread-local-struc.jpg)
 
-> 总结：ThreadLocal对象通过Thread.currentThread()方法获得当前Thread对象，并且获得当前Thread对象中的本地变量副本存储集合ThreadLocalMap对象。ThreadLocal对象用自己作为key来操作ThreadLocalMap对象中的value，而这个value就是线程独享的变量副本。关键代码在ThreadLocal类中：
+关键代码在ThreadLocal类中：
 
 
 
@@ -170,9 +181,11 @@ class Thread implements Runnable {
 
 #### ThreadLocal为什么会有内存泄露问题?
 
-`因为对ThreadLocal理解不足而造成的使用不当`
+`因为程序员对ThreadLocal理解不足（或者说jdk过度封装使程序员对ThreadLocal理解不足）而造成的容器清理不及时`
 
-ThreadLocal本质上只是对当前Thread对象中ThreadLocalMap对象操作的一层封装。如果jdk放开权限让我们自己操作这个map，什么情况下会内存泄露呢？线程活的比较长，而我们没有把map中的Entry及时remove，就会造成内存泄露。
+ThreadLocal本质上只是对当前Thread对象中ThreadLocalMap对象操作的一层封装，我们始终操作的只是一个map而已。当这个map一直存活(线程一直存活)，并且我们忘了清除这个map中我们已经不需要的entry，就会造成内存泄露。
+
+
 
 一个例子
 
@@ -235,9 +248,7 @@ userId置null后threadLocalMap的entrys数量为：3
 
 `网上一些说因为弱引用造成内存泄露的说法是错误的`
 
-如上图所示，虚线代表弱引用，当没有强引用指向ThreadLocal对象时也会被回收，value回收不了。但是问题的根源不是弱引用，而是没有把entry从map中移除。不仅仅是ThreadLocal，`这是使用任何集合都需要注意的问题`。
-
-ThreadLocalMap 中key的弱引用代码如下，弱引用至少可以在你忘了移除ThreadLocalMap对应entry的时候帮你删除entry中的key，可以说这个弱引用有益无害。
+如上图所示，虚线代表弱引用，当没有强引用指向ThreadLocal对象时也会被回收，value回收不了。但是问题的根源不是弱引用，而是没有把entry从map中移除。ThreadLocalMap中key的弱引用代码如下，弱引用至少可以在你忘了移除ThreadLocalMap对应entry的时候帮你删除entry中的key，可以说这个弱引用有益无害。弱引用表示这个锅我不背。
 
 ```
         static class Entry extends WeakReference<ThreadLocal<?>> {
@@ -251,6 +262,8 @@ ThreadLocalMap 中key的弱引用代码如下，弱引用至少可以在你忘�
             }
         }
 ```
+
+其实不仅仅是ThreadLocal，我们操作数组、集合、Map等任何容器。如果这个容器生命周期比较长，我们都应该注意remove掉不再需要的元素。而且Map中的key最好是不可变元素（ThreadLocal也最好为final的）。
 
 
 
