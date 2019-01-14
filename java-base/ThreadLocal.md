@@ -1,5 +1,7 @@
 # 【面向知识点学习】ThreadLocal
 
+`源码基于JDK1.8`
+
 ### 知识点1：ThreadLocal是什么？
 
 需要理解线程安全，简单来说造成线程不安全的原因有两个。
@@ -133,11 +135,11 @@ class Thread implements Runnable {
 
 调用链如下：
 
-![thread-local-chain](images/thread_local_chain.png)
+![thread-local-chain](https://github.com/sunshujie1990/java-knowledge/raw/master/java-base/images/thread_local_chain.png)
 
 例子中的存储结构简图如下：
 
-![thread-local-chain](images/thread-local-struc.jpg)
+![thread-local-chain](https://github.com/sunshujie1990/java-knowledge/raw/master/java-base/images/thread-local-struc.jpg)
 
 关键代码在ThreadLocal类中：
 
@@ -244,7 +246,7 @@ userId置null后threadLocalMap的entrys数量为：3
 
 从上述结果可以看出，当ThreadLocal对象失去引用之后，ThreadLocalMap中相应的entry并未删除。从而产生内存泄露。如下图：
 
-![thread-local-chain](images/thread-local-leak.jpg)
+![thread-local-chain](https://github.com/sunshujie1990/java-knowledge/raw/master/java-base/images/thread-local-leak.jpg)
 
 `网上一些说因为弱引用造成内存泄露的说法是错误的`
 
